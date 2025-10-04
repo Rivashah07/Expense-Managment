@@ -87,20 +87,34 @@ export default function ReceiptUploadDialog({ onExpenseCreated, employeeId, comp
     setIsSubmitting(true);
 
     try {
-      await expensesAPI.create({
+      // Validate required fields
+      if (!formData.amount || !formData.category) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+
+      const expenseData = {
         ...formData,
         amount: parseFloat(formData.amount),
         companyCurrencyAmount: parseFloat(formData.amount),
         employeeId,
         companyId,
-      });
+      };
+
+      console.log('Submitting expense data:', expenseData);
+      
+      await expensesAPI.create(expenseData);
       
       toast.success('Expense submitted successfully!');
       handleClose();
       onExpenseCreated();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Submit Error:', error);
-      toast.error('Failed to submit expense');
+      if (error.response?.data?.error) {
+        toast.error(`Error: ${error.response.data.error}`);
+      } else {
+        toast.error('Failed to submit expense');
+      }
     } finally {
       setIsSubmitting(false);
     }

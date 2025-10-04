@@ -5,7 +5,7 @@ import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { ExpenseStatus } from '@prisma/client';
 import { getNextApprover } from '../services/approvalService';
 import multer from 'multer';
-import Tesseract from 'tesseract.js';
+import geminiService from '../services/geminiService';
 
 const router = Router();
 
@@ -32,17 +32,28 @@ const createExpenseSchema = z.object({
   companyCurrencyAmount: z.number().positive(),
   category: z.string().min(1),
   description: z.string().optional(),
-  date: z.string().datetime().or(z.date()),
+  date: z.string().refine((val) => {
+    // Accept both date (YYYY-MM-DD) and datetime formats
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const datetimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+    return dateRegex.test(val) || datetimeRegex.test(val) || !isNaN(Date.parse(val));
+  }, "Invalid date format").transform((val) => {
+    // Convert date string to datetime if needed
+    if (val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return new Date(val + 'T00:00:00.000Z').toISOString();
+    }
+    return val;
+  }),
 });
 
-// OCR endpoint for receipt scanning
+// AI-powered receipt parsing endpoint using Google Gemini
 /**
  * @openapi
  * /api/expenses/ocr:
  *   post:
  *     tags:
  *       - Expenses
- *     summary: Extract expense data from receipt image using OCR
+ *     summary: Extract expense data from receipt image using AI (Google Gemini)
  *     requestBody:
  *       required: true
  *       content:
@@ -55,7 +66,7 @@ const createExpenseSchema = z.object({
  *                 format: binary
  *     responses:
  *       200:
- *         description: Extracted expense data
+ *         description: Extracted expense data with AI confidence score
  *         content:
  *           application/json:
  *             schema:
@@ -71,10 +82,17 @@ const createExpenseSchema = z.object({
  *                   type: string
  *                 date:
  *                   type: string
+ *                 merchant:
+ *                   type: string
+ *                 confidence:
+ *                   type: number
+ *                   description: AI confidence score (0-100)
  *                 rawText:
  *                   type: string
  *       400:
- *         description: Invalid image or OCR processing failed
+ *         description: Invalid image or AI processing failed
+ *       500:
+ *         description: Server error during AI processing
  */
 router.post('/ocr', upload.single('image'), asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -82,124 +100,82 @@ router.post('/ocr', upload.single('image'), asyncHandler(async (req, res) => {
   }
 
   try {
-    // Perform OCR on the uploaded image
-    const { data: { text } } = await Tesseract.recognize(
-      req.file.buffer,
-      'eng',
-      {
-        logger: m => console.log(m)
-      }
-    );
+    // Use Gemini AI to parse the receipt image
+    const parsedData = await geminiService.parseReceiptImage(req.file.buffer);
 
-    // Parse the extracted text to find expense information
-    const parsedData = parseReceiptText(text);
+    // Check if the AI was confident in its extraction
+    if (parsedData.confidence < 30) {
+      return res.status(200).json({
+        ...parsedData,
+        warning: 'Low confidence in data extraction. Please verify the information.',
+      });
+    }
 
-    res.json({
-      ...parsedData,
-      rawText: text,
-    });
+    res.json(parsedData);
   } catch (error) {
-    console.error('OCR processing error:', error);
-    throw new AppError('Failed to process receipt image', 500);
+    console.error('AI receipt parsing error:', error);
+    throw new AppError('Failed to process receipt image with AI', 500);
   }
 }));
 
-// Helper function to parse receipt text and extract expense information
-function parseReceiptText(text: string) {
-  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+// Additional endpoint for text-based receipt parsing (fallback)
+/**
+ * @openapi
+ * /api/expenses/ocr-text:
+ *   post:
+ *     tags:
+ *       - Expenses
+ *     summary: Extract expense data from receipt text using AI
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: Raw text extracted from receipt
+ *     responses:
+ *       200:
+ *         description: Extracted expense data from text
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 amount:
+ *                   type: number
+ *                 currency:
+ *                   type: string
+ *                 category:
+ *                   type: string
+ *                 description:
+ *                   type: string
+ *                 date:
+ *                   type: string
+ *                 merchant:
+ *                   type: string
+ *                 confidence:
+ *                   type: number
+ *                 rawText:
+ *                   type: string
+ */
+router.post('/ocr-text', asyncHandler(async (req, res) => {
+  const { text } = req.body;
   
-  let amount = 0;
-  let currency = 'USD';
-  let category = 'Other';
-  let description = '';
-  let date = new Date().toISOString().split('T')[0];
-
-  // Extract amount (look for patterns like $123.45, 123.45, etc.)
-  const amountPatterns = [
-    /\$?(\d+\.?\d*)/g,
-    /(\d+\.?\d*)\s*USD/g,
-    /(\d+\.?\d*)\s*EUR/g,
-    /(\d+\.?\d*)\s*GBP/g,
-  ];
-
-  for (const pattern of amountPatterns) {
-    const matches = text.match(pattern);
-    if (matches) {
-      // Get the largest amount found (likely the total)
-      const amounts = matches.map(match => {
-        const num = parseFloat(match.replace(/[^\d.]/g, ''));
-        return isNaN(num) ? 0 : num;
-      });
-      const maxAmount = Math.max(...amounts);
-      if (maxAmount > amount) {
-        amount = maxAmount;
-      }
-    }
+  if (!text || typeof text !== 'string') {
+    throw new AppError('Text content is required', 400);
   }
 
-  // Extract currency
-  if (text.includes('EUR') || text.includes('€')) {
-    currency = 'EUR';
-  } else if (text.includes('GBP') || text.includes('£')) {
-    currency = 'GBP';
-  } else if (text.includes('USD') || text.includes('$')) {
-    currency = 'USD';
+  try {
+    const parsedData = await geminiService.parseReceiptText(text);
+    res.json(parsedData);
+  } catch (error) {
+    console.error('AI text parsing error:', error);
+    throw new AppError('Failed to process receipt text with AI', 500);
   }
-
-  // Extract date (look for common date patterns)
-  const datePatterns = [
-    /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/g,
-    /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/g,
-    /(\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4})/gi,
-  ];
-
-  for (const pattern of datePatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      try {
-        const parsedDate = new Date(match[0]);
-        if (!isNaN(parsedDate.getTime())) {
-          date = parsedDate.toISOString().split('T')[0];
-          break;
-        }
-      } catch (e) {
-        // Continue to next pattern
-      }
-    }
-  }
-
-  // Extract description (usually the first few lines or merchant name)
-  const descriptionLines = lines.slice(0, 3).filter(line => 
-    !line.match(/\d+\.?\d*/) && // Not just numbers
-    line.length > 3 && // Not too short
-    !line.toLowerCase().includes('total') &&
-    !line.toLowerCase().includes('subtotal')
-  );
-  
-  if (descriptionLines.length > 0) {
-    description = descriptionLines[0];
-  }
-
-  // Categorize based on keywords
-  const lowerText = text.toLowerCase();
-  if (lowerText.includes('hotel') || lowerText.includes('accommodation') || lowerText.includes('travel')) {
-    category = 'Travel';
-  } else if (lowerText.includes('restaurant') || lowerText.includes('food') || lowerText.includes('meal')) {
-    category = 'Meals';
-  } else if (lowerText.includes('office') || lowerText.includes('supplies') || lowerText.includes('stationery')) {
-    category = 'Office Supplies';
-  } else if (lowerText.includes('equipment') || lowerText.includes('computer') || lowerText.includes('software')) {
-    category = 'Equipment';
-  }
-
-  return {
-    amount,
-    currency,
-    category,
-    description,
-    date,
-  };
-}
+}));
 
 /**
  * @openapi
@@ -251,39 +227,55 @@ function parseReceiptText(text: string) {
  *         description: Validation error
  */
 router.post('/', asyncHandler(async (req, res) => {
-  const data = createExpenseSchema.parse(req.body);
-
-  const expense = await prisma.expense.create({
-    data: {
-      employeeId: data.employeeId,
-      companyId: data.companyId,
-      amount: data.amount,
-      originalCurrency: data.originalCurrency,
-      companyCurrencyAmount: data.companyCurrencyAmount,
-      category: data.category,
-      description: data.description,
-      date: new Date(data.date),
-      status: ExpenseStatus.Pending,
-    },
-    include: {
-      employee: true,
-      company: true,
-    },
-  });
-
-  // Get the next approver (first step)
   try {
-    const nextApprover = await getNextApprover(expense.id);
-    res.status(201).json({
-      expense,
-      nextApprover,
+    console.log('Received expense data:', req.body);
+    const data = createExpenseSchema.parse(req.body);
+    console.log('Parsed expense data:', data);
+
+    const expense = await prisma.expense.create({
+      data: {
+        employeeId: data.employeeId,
+        companyId: data.companyId,
+        amount: data.amount,
+        originalCurrency: data.originalCurrency,
+        companyCurrencyAmount: data.companyCurrencyAmount,
+        category: data.category,
+        description: data.description,
+        date: new Date(data.date),
+        status: ExpenseStatus.Pending,
+      },
+      include: {
+        employee: true,
+        company: true,
+      },
     });
+
+    // Get the next approver (first step)
+    try {
+      const nextApprover = await getNextApprover(expense.id);
+      res.status(201).json({
+        expense,
+        nextApprover,
+      });
+    } catch (error) {
+      res.status(201).json({
+        expense,
+        nextApprover: null,
+        warning: 'Expense created but approval flow not configured',
+      });
+    }
   } catch (error) {
-    res.status(201).json({
-      expense,
-      nextApprover: null,
-      warning: 'Expense created but approval flow not configured',
-    });
+    console.error('Expense creation error:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Validation error',
+        details: error.issues.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+    }
+    throw error;
   }
 }));
 

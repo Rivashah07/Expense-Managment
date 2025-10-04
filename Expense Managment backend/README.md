@@ -19,6 +19,7 @@ A multi-role (Admin, Manager, Employee) expense management system with sequentia
 - **Database**: PostgreSQL
 - **ORM**: Prisma
 - **Validation**: Zod
+- **AI/OCR**: Google Gemini API for intelligent receipt parsing
 - **Documentation**: Swagger (swagger-jsdoc + swagger-ui-express)
 
 ## Installation
@@ -35,12 +36,18 @@ A multi-role (Admin, Manager, Employee) expense management system with sequentia
    npm install
    ```
 
-2. **Configure database**:
-   Edit `.env` file with your PostgreSQL credentials:
+2. **Configure environment variables**:
+   Create a `.env` file with the following variables:
    ```
    DATABASE_URL="postgresql://username:password@localhost:5432/expense_management?schema=public"
+   JWT_SECRET="your-super-secret-jwt-key-here"
+   JWT_EXPIRES_IN="7d"
+   GEMINI_API_KEY="your-google-gemini-api-key-here"
    PORT=3000
+   NODE_ENV="development"
    ```
+
+   **Note**: You need to obtain a Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey) for AI-powered receipt parsing.
 
 3. **Run migrations**:
    ```bash
@@ -102,6 +109,8 @@ Once the server is running, visit:
 - `GET /api/expenses` - List expenses (filter by company/employee/status)
 - `GET /api/expenses/:id` - Get expense with approval history
 - `GET /api/expenses/:id/next-approver` - **Get next approver (core function)**
+- `POST /api/expenses/ocr` - **AI-powered receipt parsing with Google Gemini**
+- `POST /api/expenses/ocr-text` - **AI-powered text-based receipt parsing**
 
 ### Approval Flow
 - `POST /api/approval-flow` - Create approval flow step
