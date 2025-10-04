@@ -14,9 +14,10 @@ import { expensesAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import ReceiptUploadDialog from '@/components/ReceiptUploadDialog';
+import { Upload, Scan, Loader2, DollarSign, Clock, XCircle } from 'lucide-react';
 import { extractReceiptData, validateReceiptImage } from '@/lib/ocr';
 import { convertCurrency, getPopularCurrencies } from '@/lib/currency';
-import { Upload, Scan, Loader2, DollarSign, Clock, XCircle } from 'lucide-react';
 
 export default function EmployeeDashboard() {
   const { user } = useAuthStore();
@@ -168,13 +169,19 @@ export default function EmployeeDashboard() {
             </h2>
             <p className="text-gray-600 mt-1">Track and submit your expense reports</p>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
-                <Upload className="w-4 h-4 mr-2" />
-                Submit New Expense
-              </Button>
-            </DialogTrigger>
+          <div className="flex space-x-3">
+            <ReceiptUploadDialog 
+              onExpenseCreated={loadExpenses}
+              employeeId={user?.id || ''}
+              companyId={user?.company?.id || ''}
+            />
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Manual Entry
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Submit Expense</DialogTitle>
@@ -301,6 +308,7 @@ export default function EmployeeDashboard() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Stats Cards */}

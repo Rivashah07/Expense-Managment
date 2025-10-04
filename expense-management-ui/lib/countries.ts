@@ -1,4 +1,11 @@
-export const countries = [
+export interface Country {
+  code: string;
+  name: string;
+  currency: string;
+  symbol: string;
+}
+
+export const countries: Country[] = [
   { code: 'US', name: 'United States', currency: 'USD', symbol: '$' },
   { code: 'GB', name: 'United Kingdom', currency: 'GBP', symbol: '£' },
   { code: 'EU', name: 'European Union', currency: 'EUR', symbol: '€' },

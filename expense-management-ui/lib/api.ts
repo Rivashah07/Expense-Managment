@@ -54,6 +54,15 @@ export const expensesAPI = {
   getById: (id: string) => api.get(`/expenses/${id}`),
   create: (data: any) => api.post('/expenses', data),
   getNextApprover: (id: string) => api.get(`/expenses/${id}/next-approver`),
+  scanReceipt: (imageFile: File) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    return api.post('/expenses/ocr', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };
 
 // Approval API

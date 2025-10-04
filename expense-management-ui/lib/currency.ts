@@ -1,163 +1,94 @@
-/**
- * Currency utilities for conversion and country data
- */
+// Currency utility functions
 
-export interface Country {
-  name: string;
-  code: string;
+export interface Currency {
   currency: string;
   currencySymbol: string;
+  name: string;
 }
 
-export interface ExchangeRates {
-  base: string;
-  date: string;
-  rates: { [key: string]: number };
+export function getPopularCurrencies(): Currency[] {
+  return [
+    { currency: 'USD', currencySymbol: '$', name: 'US Dollar' },
+    { currency: 'EUR', currencySymbol: '€', name: 'Euro' },
+    { currency: 'GBP', currencySymbol: '£', name: 'British Pound' },
+    { currency: 'CAD', currencySymbol: 'C$', name: 'Canadian Dollar' },
+    { currency: 'AUD', currencySymbol: 'A$', name: 'Australian Dollar' },
+    { currency: 'JPY', currencySymbol: '¥', name: 'Japanese Yen' },
+    { currency: 'CHF', currencySymbol: 'CHF', name: 'Swiss Franc' },
+    { currency: 'CNY', currencySymbol: '¥', name: 'Chinese Yuan' },
+  ];
 }
 
-let countriesCache: Country[] | null = null;
-let exchangeRatesCache: { [base: string]: { data: ExchangeRates; timestamp: number } } = {};
+export function formatCurrency(amount: number, currency: string = 'USD'): string {
+  const currencySymbols: { [key: string]: string } = {
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+    'CAD': 'C$',
+    'AUD': 'A$',
+    'JPY': '¥',
+    'CHF': 'CHF',
+    'CNY': '¥',
+    'INR': '₹',
+    'BRL': 'R$',
+    'MXN': 'Mex$',
+    'ZAR': 'R',
+    'SGD': 'S$',
+    'AED': 'د.إ',
+    'SEK': 'kr',
+    'NOK': 'kr',
+    'DKK': 'kr',
+    'NZD': 'NZ$',
+    'KRW': '₩',
+    'MYR': 'RM',
+    'PHP': '₱',
+    'THB': '฿',
+    'IDR': 'Rp',
+    'VND': '₫',
+    'PLN': 'zł',
+    'TRY': '₺',
+    'RUB': '₽',
+    'ARS': '$',
+    'CLP': '$',
+    'COP': '$',
+    'PEN': 'S/',
+    'EGP': 'E£',
+    'NGN': '₦',
+    'KES': 'KSh',
+    'ILS': '₪',
+    'SAR': '﷼',
+    'QAR': '﷼',
+    'KWD': 'د.ك',
+    'HKD': 'HK$',
+    'TWD': 'NT$',
+    'BDT': '৳',
+    'PKR': '₨',
+    'LKR': '₨',
+    'NPR': '₨',
+  };
 
-const CACHE_DURATION = 3600000; // 1 hour in milliseconds
+  const symbol = currencySymbols[currency] || '$';
+  
+  // Format the number with appropriate decimal places
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 
-/**
- * Fetch all countries with their currencies
- */
-export async function fetchCountries(): Promise<Country[]> {
-  if (countriesCache) {
-    return countriesCache;
-  }
-
-  try {
-    const response = await fetch('https://restcountries.com/v3.1/all?fields=name,currencies,cca2');
-    const data = await response.json();
-
-    countriesCache = data
-      .map((country: any) => {
-        const currencies = country.currencies || {};
-        const currencyCode = Object.keys(currencies)[0];
-        const currencyData = currencies[currencyCode];
-
-        return {
-          name: country.name.common,
-          code: country.cca2,
-          currency: currencyCode || 'USD',
-          currencySymbol: currencyData?.symbol || '$',
-        };
-      })
-      .filter((c: Country) => c.currency)
-      .sort((a: Country, b: Country) => a.name.localeCompare(b.name));
-
-    return countriesCache;
-  } catch (error) {
-    console.error('Failed to fetch countries:', error);
-    // Return default fallback
-    return [
-      { name: 'United States', code: 'US', currency: 'USD', currencySymbol: '$' },
-      { name: 'United Kingdom', code: 'GB', currency: 'GBP', currencySymbol: '£' },
-      { name: 'Eurozone', code: 'EU', currency: 'EUR', currencySymbol: '€' },
-    ];
-  }
+  return `${symbol}${formattedAmount}`;
 }
 
-/**
- * Fetch exchange rates for a base currency
- */
-export async function fetchExchangeRates(baseCurrency: string): Promise<ExchangeRates> {
-  const cached = exchangeRatesCache[baseCurrency];
-  const now = Date.now();
-
-  // Return cached data if still valid
-  if (cached && now - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
-  }
-
-  try {
-    const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch exchange rates');
-    }
-
-    const data = await response.json();
-
-    // Cache the result
-    exchangeRatesCache[baseCurrency] = {
-      data,
-      timestamp: now,
-    };
-
-    return data;
-  } catch (error) {
-    console.error('Failed to fetch exchange rates:', error);
-    
-    // Return cached data even if expired, or throw error
-    if (cached) {
-      return cached.data;
-    }
-    
-    throw new Error('Could not fetch exchange rates. Please try again later.');
-  }
-}
-
-/**
- * Convert amount from one currency to another
- */
 export async function convertCurrency(
   amount: number,
   fromCurrency: string,
   toCurrency: string
 ): Promise<number> {
-  if (fromCurrency === toCurrency) {
-    return amount;
-  }
-
-  try {
-    const rates = await fetchExchangeRates(fromCurrency);
-    const rate = rates.rates[toCurrency];
-
-    if (!rate) {
-      throw new Error(`Exchange rate not found for ${toCurrency}`);
-    }
-
-    return amount * rate;
-  } catch (error) {
-    console.error('Currency conversion error:', error);
-    throw error;
-  }
+  // This is a placeholder function - in a real implementation, you would:
+  // 1. Call a currency conversion API (like exchangerate-api.com)
+  // 2. Use real-time exchange rates
+  // 3. Handle errors and fallbacks
+  
+  // For now, return the original amount as a fallback
+  console.warn(`Currency conversion from ${fromCurrency} to ${toCurrency} not implemented`);
+  return amount;
 }
-
-/**
- * Format currency with proper symbol and decimals
- */
-export function formatCurrency(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch (error) {
-    // Fallback formatting
-    return `${currency} ${amount.toFixed(2)}`;
-  }
-}
-
-/**
- * Get popular currencies for quick selection
- */
-export function getPopularCurrencies(): Country[] {
-  return [
-    { name: 'United States', code: 'US', currency: 'USD', currencySymbol: '$' },
-    { name: 'Eurozone', code: 'EU', currency: 'EUR', currencySymbol: '€' },
-    { name: 'United Kingdom', code: 'GB', currency: 'GBP', currencySymbol: '£' },
-    { name: 'Japan', code: 'JP', currency: 'JPY', currencySymbol: '¥' },
-    { name: 'Canada', code: 'CA', currency: 'CAD', currencySymbol: 'C$' },
-    { name: 'Australia', code: 'AU', currency: 'AUD', currencySymbol: 'A$' },
-    { name: 'Switzerland', code: 'CH', currency: 'CHF', currencySymbol: 'Fr' },
-    { name: 'China', code: 'CN', currency: 'CNY', currencySymbol: '¥' },
-    { name: 'India', code: 'IN', currency: 'INR', currencySymbol: '₹' },
-  ];
-}
-

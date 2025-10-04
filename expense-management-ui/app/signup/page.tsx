@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { authAPI, companiesAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import { toast } from 'sonner';
-import { fetchCountries, type Country } from '@/lib/currency';
+import { countries, type Country } from '@/lib/countries';
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
@@ -27,26 +27,16 @@ export default function SignUp() {
   const [companies, setCompanies] = useState<any[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingCountries, setLoadingCountries] = useState(true);
   const [createNewCompany, setCreateNewCompany] = useState(true);
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
 
   useEffect(() => {
     // Load companies
-    companiesAPI.getAll().then(({ data }) => setCompanies(data)).catch(() => {});
+    companiesAPI.getAll().then(({ data }: any) => setCompanies(data)).catch(() => {});
     
-    // Load countries from API
-    fetchCountries()
-      .then(data => {
-        setCountries(data);
-        setLoadingCountries(false);
-      })
-      .catch(err => {
-        console.error('Failed to load countries:', err);
-        toast.error('Failed to load countries');
-        setLoadingCountries(false);
-      });
+    // Set countries from static data
+    setCountries(countries);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
