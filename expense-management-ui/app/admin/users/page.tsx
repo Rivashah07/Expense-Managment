@@ -62,7 +62,8 @@ export default function UserManagement() {
       setNewUser({ name: '', email: '', role: 'Employee', managerId: '' });
       loadUsers();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create user');
+      console.error('Create user error:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create user');
     }
   };
 
