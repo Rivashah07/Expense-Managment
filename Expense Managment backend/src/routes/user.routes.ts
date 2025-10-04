@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../config/database';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   role: z.enum(['Admin', 'Manager', 'Employee']),
   companyId: z.string().uuid(),
+  password: z.string().min(6),
 });
 
 const assignManagerSchema = z.object({
@@ -58,9 +60,12 @@ const assignManagerSchema = z.object({
 router.post('/', asyncHandler(async (req, res) => {
   const data = createUserSchema.parse(req.body);
 
+  const hashedPassword = await bcrypt.hash(data.password, 10);
+
   const user = await prisma.user.create({
     data: {
       email: data.email,
+      password: hashedPassword,
       name: data.name,
       role: UserRole[data.role],
       companyId: data.companyId,
@@ -281,7 +286,7 @@ router.get('/manager-assignments', asyncHandler(async (req, res) => {
  */
 router.put('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { email, name, role, managerId } = req.body;
+  const { email, name, role, managerId, password } = req.body;
 
   // Check if user exists
   const existingUser = await prisma.user.findUnique({
@@ -297,6 +302,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (email) updateData.email = email;
   if (name) updateData.name = name;
   if (role) updateData.role = UserRole[role as keyof typeof UserRole];
+  if (password) updateData.password = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.update({
     where: { id },

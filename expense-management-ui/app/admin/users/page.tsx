@@ -28,19 +28,19 @@ export default function UserManagement() {
   });
 
   useEffect(() => {
-    if (currentUser?.companyId) {
+    if (currentUser?.companyId || currentUser?.company?.id) {
       loadUsers();
     }
   }, [currentUser]);
 
   const loadUsers = async () => {
-    if (!currentUser?.companyId) {
+    if (!currentUser?.companyId && !currentUser?.company?.id) {
       console.log('No company ID, skipping user load');
       return;
     }
     
     try {
-      const { data } = await usersAPI.getAll(currentUser.companyId);
+      const { data } = await usersAPI.getAll(currentUser.companyId || currentUser.company?.id || '');
       setUsers(data || []);
       setManagers((data || []).filter((u: User) => u.role === 'Manager' || u.role === 'Admin'));
     } catch (error: any) {
@@ -53,22 +53,12 @@ export default function UserManagement() {
     e.preventDefault();
     try {
       const password = generatePassword();
-      const response = await usersAPI.create({
+      await usersAPI.create({
         ...newUser,
-        companyId: currentUser?.companyId || '',
+        companyId: currentUser?.companyId || currentUser?.company?.id || '',
         password: password,
       });
-      
-      // Show the generated password to admin
-      toast.success(
-        <div>
-          <p className="font-bold">User created successfully!</p>
-          <p className="text-sm mt-1">Email: {newUser.email}</p>
-          <p className="text-sm">Password: <span className="font-mono bg-yellow-100 px-1">{response.data.tempPassword || password}</span></p>
-        </div>,
-        { duration: 10000 }
-      );
-      
+      toast.success('User created successfully. Password: ' + password);
       setNewUser({ name: '', email: '', role: 'Employee', managerId: '' });
       loadUsers();
     } catch (error: any) {
@@ -100,8 +90,9 @@ export default function UserManagement() {
     }
   };
 
-  const handleSendPassword = (user: User) => {
+  const handleSendPassword = async (user: User) => {
     const newPassword = generatePassword();
+    await usersAPI.update(user.id, { password: newPassword });
     toast.success(`New password for ${user.name}: ${newPassword}`);
   };
 
