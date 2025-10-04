@@ -1,0 +1,115 @@
+// Prisma schema for Expense Management
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  Admin
+  Manager
+  Employee
+}
+
+enum ApprovalRole {
+  Manager
+  Finance
+  Director
+}
+
+enum ExpenseStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+model Company {
+  id               String           @id @default(uuid())
+  name             String
+  defaultCurrency  String           @db.VarChar(10)
+  users            User[]
+  expenses         Expense[]
+  approvalFlow     ApprovalFlowStep[]
+  managerAssignments ManagerAssignment[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model User {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  password   String?
+  name       String
+  role       UserRole
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  managedEmployees ManagerAssignment[] @relation("ManagerToEmployees")
+  employeeAssignment ManagerAssignment?
+  expenses   Expense[]
+  managerOfApprovals ExpenseApproval[] @relation("ApproverToApprovals")
+  approvalFlowSteps ApprovalFlowStep[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model ManagerAssignment {
+  id         String   @id @default(uuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId String   @unique
+  employee   User     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId  String
+  manager    User     @relation("ManagerToEmployees", fields: [managerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model Expense {
+  id                     String        @id @default(uuid())
+  companyId              String
+  company                Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId             String
+  employee               User          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount                 Decimal       @db.Decimal(12, 2)
+  originalCurrency       String        @db.VarChar(10)
+  companyCurrencyAmount  Decimal       @db.Decimal(12, 2)
+  category               String
+  description            String?
+  date                   DateTime
+  status                 ExpenseStatus @default(Pending)
+  approvals              ExpenseApproval[]
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+}
+
+model ApprovalFlowStep {
+  id               String        @id @default(uuid())
+  companyId        String
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stepNumber       Int
+  approverRole     ApprovalRole
+  staticApproverId String?
+  staticApprover   User?         @relation(fields: [staticApproverId], references: [id])
+
+  @@unique([companyId, stepNumber])
+}
+
+model ExpenseApproval {
+  id           String        @id @default(uuid())
+  expenseId    String
+  expense      Expense       @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  stepNumber   Int
+  approverId   String
+  approver     User          @relation("ApproverToApprovals", fields: [approverId], references: [id])
+  approverRole ApprovalRole
+  status       ExpenseStatus @default(Pending)
+  comments     String?
+  createdAt    DateTime      @default(now())
+  decidedAt    DateTime?
+
+  @@unique([expenseId, stepNumber])
+}
+
+
