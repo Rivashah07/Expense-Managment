@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { authAPI, companiesAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import { toast } from 'sonner';
-import { countries, type Country } from '@/lib/countries';
+import { countries as allCountries, type Country } from '@/lib/countries';
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
@@ -36,7 +36,7 @@ export default function SignUp() {
     companiesAPI.getAll().then(({ data }: any) => setCompanies(data)).catch(() => {});
     
     // Set countries from static data
-    setCountries(countries);
+    setCountries(allCountries);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
