@@ -244,5 +244,170 @@ router.get('/manager-assignments', asyncHandler(async (req, res) => {
   res.json(assignments);
 }));
 
+/**
+ * @openapi
+ * /api/users/{id}:
+ *   put:
+ *     tags:
+ *       - Users
+ *     summary: Update a user
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [Admin, Manager, Employee]
+ *               managerId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       404:
+ *         description: User not found
+ */
+router.put('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { email, name, role, managerId } = req.body;
+
+  // Check if user exists
+  const existingUser = await prisma.user.findUnique({
+    where: { id },
+  });
+
+  if (!existingUser) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Update user
+  const updateData: any = {};
+  if (email) updateData.email = email;
+  if (name) updateData.name = name;
+  if (role) updateData.role = UserRole[role as keyof typeof UserRole];
+
+  const user = await prisma.user.update({
+    where: { id },
+    data: updateData,
+    include: {
+      company: true,
+      employeeAssignment: {
+        include: {
+          manager: true,
+        },
+      },
+    },
+  });
+
+  // Handle manager assignment
+  if (managerId !== undefined) {
+    if (managerId === '' || managerId === null) {
+      // Remove manager assignment
+      await prisma.managerAssignment.deleteMany({
+        where: { employeeId: id },
+      });
+    } else {
+      // Check if assignment already exists for this employee
+      const existingAssignment = await prisma.managerAssignment.findFirst({
+        where: {
+          employeeId: id,
+          managerId: managerId,
+        },
+      });
+
+      if (!existingAssignment) {
+        // Delete old assignment and create new one
+        await prisma.managerAssignment.deleteMany({
+          where: { employeeId: id },
+        });
+
+        await prisma.managerAssignment.create({
+          data: {
+            employeeId: id,
+            managerId: managerId,
+            companyId: existingUser.companyId,
+          },
+        });
+      }
+    }
+  }
+
+  // Fetch updated user with relations
+  const updatedUser = await prisma.user.findUnique({
+    where: { id },
+    include: {
+      company: true,
+      employeeAssignment: {
+        include: {
+          manager: true,
+        },
+      },
+    },
+  });
+
+  res.json(updatedUser);
+}));
+
+/**
+ * @openapi
+ * /api/users/{id}:
+ *   delete:
+ *     tags:
+ *       - Users
+ *     summary: Delete a user
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       404:
+ *         description: User not found
+ */
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Check if user exists
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Delete related manager assignments first
+  await prisma.managerAssignment.deleteMany({
+    where: {
+      OR: [
+        { employeeId: id },
+        { managerId: id },
+      ],
+    },
+  });
+
+  // Delete the user
+  await prisma.user.delete({
+    where: { id },
+  });
+
+  res.json({ message: 'User deleted successfully', id });
+}));
+
 export default router;
 
