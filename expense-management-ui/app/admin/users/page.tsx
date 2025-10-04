@@ -28,19 +28,19 @@ export default function UserManagement() {
   });
 
   useEffect(() => {
-    if (currentUser?.companyId) {
+    if (currentUser?.companyId || currentUser?.company?.id) {
       loadUsers();
     }
   }, [currentUser]);
 
   const loadUsers = async () => {
-    if (!currentUser?.companyId) {
+    if (!currentUser?.companyId && !currentUser?.company?.id) {
       console.log('No company ID, skipping user load');
       return;
     }
     
     try {
-      const { data } = await usersAPI.getAll(currentUser.companyId);
+      const { data } = await usersAPI.getAll(currentUser.companyId || currentUser.company?.id || '');
       setUsers(data || []);
       setManagers((data || []).filter((u: User) => u.role === 'Manager' || u.role === 'Admin'));
     } catch (error: any) {
@@ -54,7 +54,7 @@ export default function UserManagement() {
     try {
       await usersAPI.create({
         ...newUser,
-        companyId: currentUser?.companyId || '',
+        companyId: currentUser?.companyId || currentUser?.company?.id || '',
         password: generatePassword(),
       });
       toast.success('User created successfully');
