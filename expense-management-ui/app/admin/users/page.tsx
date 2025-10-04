@@ -52,12 +52,13 @@ export default function UserManagement() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const password = generatePassword();
       await usersAPI.create({
         ...newUser,
         companyId: currentUser?.companyId || currentUser?.company?.id || '',
-        password: generatePassword(),
+        password: password,
       });
-      toast.success('User created successfully');
+      toast.success('User created successfully. Password: ' + password);
       setNewUser({ name: '', email: '', role: 'Employee', managerId: '' });
       loadUsers();
     } catch (error: any) {
@@ -88,8 +89,9 @@ export default function UserManagement() {
     }
   };
 
-  const handleSendPassword = (user: User) => {
+  const handleSendPassword = async (user: User) => {
     const newPassword = generatePassword();
+    await usersAPI.update(user.id, { password: newPassword });
     toast.success(`New password for ${user.name}: ${newPassword}`);
   };
 
