@@ -52,16 +52,28 @@ export default function UserManagement() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await usersAPI.create({
+      const password = generatePassword();
+      const response = await usersAPI.create({
         ...newUser,
         companyId: currentUser?.companyId || '',
-        password: generatePassword(),
+        password: password,
       });
-      toast.success('User created successfully');
+      
+      // Show the generated password to admin
+      toast.success(
+        <div>
+          <p className="font-bold">User created successfully!</p>
+          <p className="text-sm mt-1">Email: {newUser.email}</p>
+          <p className="text-sm">Password: <span className="font-mono bg-yellow-100 px-1">{response.data.tempPassword || password}</span></p>
+        </div>,
+        { duration: 10000 }
+      );
+      
       setNewUser({ name: '', email: '', role: 'Employee', managerId: '' });
       loadUsers();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create user');
+      console.error('Create user error:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create user');
     }
   };
 
